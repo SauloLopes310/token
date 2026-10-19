@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Token - Quadro de Chaves SENAI</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f172a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .card {
+            background: #1e293b;
+            padding: 40px 60px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 2px solid #334155;
+        }
+        h1 { font-size: 28px; color: #38bdf8; margin-bottom: 10px; }
+        p { color: #94a3b8; font-size: 16px; margin-bottom: 30px; }
+        .token-box {
+            font-size: 90px;
+            font-weight: bold;
+            letter-spacing: 15px;
+            color: #10b981;
+            background: #0f172a;
+            padding: 20px 40px;
+            border-radius: 12px;
+            border: 2px dashed #475569;
+            margin-bottom: 20px;
+        }
+        .timer { font-size: 14px; color: #cbd5e1; }
+        
+        /* Tela de Bloqueio */
+        #tela-bloqueio {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #0f172a;
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .erro-box {
+            background: #7f1d1d;
+            border: 2px solid #ef4444;
+            color: #fca5a5;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Tela Principal do Display -->
+    <div class="card" id="conteudo-display">
+        <h1>SENAI - SANTA RITA DO SAPUCAÍ</h1>
+        <p>Código de Segurança Presencial (Token de Chaves)</p>
+        <div id="token-exibicao" class="token-box">--</div>
+        <div id="timer-exibicao" class="timer">Atualiza a cada 1 minuto</div>
+    </div>
+
+    <!-- Tela de Bloqueio de Acesso Não Autorizado -->
+    <div id="tela-bloqueio">
+        <div class="erro-box">
+            <h2>🔒 ACESSO NEGADO</h2>
+            <p style="color: #fca5a5; margin: 15px 0;">Este display de segurança é restrito e só pode ser executado no computador/tablet oficial autorizado junto ao quadro de chaves da unidade.</p>
+            <p style="font-size: 12px; margin: 0;">Dispositivo não reconhecido ou acesso via smartphone bloqueado.</p>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================================
+        // CAMADA DE SEGURANÇA E BLOQUEIO DE DISPOSITIVO EXTERNO
+        // ==========================================================
+        function verificarAutorizacaoDispositivo() {
+            const agent = navigator.userAgent.toLowerCase();
+            
+            // 1. Bloqueio automático de celulares e tablets comuns (Android/iPhone)
+            const ehMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(agent);
+            if (ehMobile) {
+                bloquearAcesso();
+                return false;
+            }
+
+            // 2. Sistema de Chave de Hardware Autorizada (Fingerprint local)
+            const CHAVE_AUTORIZADA = "SENAI_SRS_DISPOSITIVO_OFICIAL_2026";
+            let tokenLocal = localStorage.getItem("device_auth_token");
+
+            if (!tokenLocal) {
+                // Se for a primeira vez abrindo no PC oficial, solicitamos a senha de liberação de hardware
+                const senhaHardware = prompt("🔑 COMPUTADOR NOVO: Insira a senha de ativação para registrar este PC como o Display Oficial do Quadro de Chaves:");
+                if (senhaHardware === "#13371") {
+                    localStorage.setItem("device_auth_token", CHAVE_AUTORIZADA);
+                    alert("Dispositivo autorizado com sucesso!");
+                } else {
+                    bloquearAcesso();
+                    return false;
+                }
+            } else if (tokenLocal !== CHAVE_AUTORIZADA) {
+                bloquearAcesso();
+                return false;
+            }
+
+            return true;
+        }
+
+        function bloquearAcesso() {
+            document.getElementById('conteudo-display').style.display = 'none';
+            document.getElementById('tela-bloqueio').style.display = 'flex';
+        }
+
+        // Executa a validação de segurança antes de iniciar o sistema
+        if (verificarAutorizacaoDispositivo()) {
+            
+            const firebaseConfig = {
+                apiKey: "AIzaSyDg9vM1RnmPJhIi80E_KE_R_Z-G7myhtds",
+                authDomain: "controle-chaves-srs.firebaseapp.com",
+                databaseURL: "https://controle-chaves-srs-default-rtdb.firebaseio.com",
+                projectId: "controle-chaves-srs",
+                storageBucket: "controle-chaves-srs.firebasestorage.app",
+                messagingSenderId: "90439057986",
+                appId: "1:90439057986:web:540222b0a7a7f639b423db",
+                measurementId: "G-Y0BGXCFQ5D"
+            };
+
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+
+            function gerarTokenAleatorio() {
+                const letras = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; 
+                let token = "";
+                for (let i = 0; i < 2; i++) {
+                    token += letras.charAt(Math.floor(Math.random() * letras.length));
+                }
+                return token;
+            }
+
+            function gerenciarToken() {
+                const agora = Date.now();
+                const umMinuto = 1 * 60 * 1000;
+
+                db.ref('tokenSeguranca').once('value', (snapshot) => {
+                    const dados = snapshot.val();
+                    let tokenAtual = "";
+
+                    if (!dados || (agora - dados.timestamp > umMinuto)) {
+                        tokenAtual = gerarTokenAleatorio();
+                        db.ref('tokenSeguranca').set({
+                            codigo: tokenAtual,
+                            timestamp: agora
+                        });
+                    } else {
+                        tokenAtual = dados.codigo;
+                    }
+
+                    document.getElementById('token-exibicao').textContent = tokenAtual;
+                });
+            }
+
+            gerenciarToken();
+            setInterval(gerenciarToken, 10000);
+        }
+    </script>
+</body>
+</html>
